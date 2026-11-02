@@ -57,7 +57,8 @@ jobs:
           set -euo pipefail
           brew install xcodegen zstd spirv-cross unar
           python -m pip install --upgrade pip
-          python -m pip install lz4 capstone fonttools backports.zstd gdown
+          python -m pip install \
+            lz4 capstone fonttools backports.zstd gdown
 
       - name: Download game files and keys
         env:
@@ -91,18 +92,25 @@ jobs:
           query = parse_qs(parsed.query)
           file_id = None
 
-          if parsed.netloc.lower() in ("drive.google.com", "www.drive.google.com"):
+          if parsed.netloc.lower() in (
+              "drive.google.com",
+              "www.drive.google.com",
+          ):
               match = re.search(r"/file/d/([^/]+)", parsed.path)
               if match:
                   file_id = match.group(1)
               elif query.get("id"):
                   file_id = query["id"][0]
 
-          if not file_id and re.fullmatch(r"[-A-Za-z0-9_]{20,}", url):
+          if not file_id and re.fullmatch(
+              r"[-A-Za-z0-9_]{20,}", url
+          ):
               file_id = url
 
           if not file_id:
-              raise SystemExit("Could not extract a Google Drive file ID.")
+              raise SystemExit(
+                  "Could not extract a Google Drive file ID."
+              )
 
           print(file_id)
           PY
@@ -127,7 +135,9 @@ jobs:
           ):
               raise SystemExit(
                   "ERROR: Google Drive returned an HTML page instead of a file. "
-                  "Check the sharing permission and file URL."
+                  "Check that the secret points to a single file and that its "
+                  "sharing permission allows access by the workflow. "
+                  "The file contents and URL are not printed."
               )
           PY
 
@@ -172,8 +182,13 @@ jobs:
 
           work = Path(sys.argv[1])
           game_dir = Path(sys.argv[2])
-          package_extensions = {".nsp", ".xci", ".nsz", ".xcz"}
-          rar_signatures = (b"Rar!\x1a\x07\x00", b"Rar!\x1a\x07\x01\x00")
+          package_extensions = {
+              ".nsp", ".xci", ".nsz", ".xcz"
+          }
+          rar_signatures = (
+              b"Rar!\x1a\x07\x00",
+              b"Rar!\x1a\x07\x01\x00",
+          )
 
           def validate_package(path):
               with path.open("rb") as f:
@@ -182,20 +197,30 @@ jobs:
               suffix = path.suffix.lower()
 
               if suffix in (".nsp", ".nsz") and magic != b"PFS0":
-                  raise SystemExit(f"Invalid {suffix} package signature: {path.name}")
+                  raise SystemExit(
+                      f"Invalid {suffix} package signature: {path.name}"
+                  )
 
               if suffix in (".xci", ".xcz") and magic != b"HEAD":
-                  raise SystemExit(f"Invalid {suffix} package signature: {path.name}")
+                  raise SystemExit(
+                      f"Invalid {suffix} package signature: {path.name}"
+                  )
 
           def add_package(source, label):
               target = game_dir / source.name
 
               if target.exists():
-                  raise SystemExit("Duplicate package filename: " + source.name)
+                  raise SystemExit(
+                      "Duplicate package filename: " + source.name
+                  )
 
               validate_package(source)
               shutil.copy2(source, target)
-              print(f"Added {label}: {target.name} ({target.stat().st_size:,} bytes)")
+
+              print(
+                  f"Added {label}: {target.name} "
+                  f"({target.stat().st_size:,} bytes)"
+              )
 
           def process_download(label):
               source = work / f"{label}.download"
@@ -207,7 +232,10 @@ jobs:
               with source.open("rb") as f:
                   signature = f.read(8)
 
-              is_rar = any(signature.startswith(magic) for magic in rar_signatures)
+              is_rar = any(
+                  signature.startswith(magic)
+                  for magic in rar_signatures
+              )
 
               if is_rar:
                   extract_dir = work / f"extracted-{label}"
@@ -215,21 +243,36 @@ jobs:
 
                   print(f"{label}: RAR archive detected; extracting.")
 
-                  subprocess.run(["unar", "-o", str(extract_dir), str(source)], check=True)
+                  subprocess.run(
+                      [
+                          "unar",
+                          "-o",
+                          str(extract_dir),
+                          str(source),
+                      ],
+                      check=True,
+                  )
 
                   packages = sorted(
                       p for p in extract_dir.rglob("*")
-                      if p.is_file() and p.suffix.lower() in package_extensions
+                      if p.is_file()
+                      and p.suffix.lower() in package_extensions
                   )
 
                   if not packages:
-                      raise SystemExit(f"No NSP/XCI/NSZ/XCZ packages found in {label} RAR archive.")
+                      raise SystemExit(
+                          f"No NSP/XCI/NSZ/XCZ packages found "
+                          f"in the {label} RAR archive."
+                      )
 
                   for package in packages:
                       add_package(package, label)
 
               else:
-                  print(f"{label}: checking as a direct package.")
+                  print(
+                      f"{label}: not a RAR archive; "
+                      "checking as a direct package."
+                  )
 
                   if signature[:4] == b"PFS0":
                       extension = ".nsp"
@@ -237,18 +280,25 @@ jobs:
                       extension = ".xci"
                   else:
                       raise SystemExit(
-                          f"{label} is not a recognized RAR archive or direct NSP/XCI package."
+                          f"{label} is not a recognized RAR archive "
+                          "or direct NSP/XCI package. "
+                          "Direct downloads must be NSP or XCI files."
                       )
 
                   target = game_dir / f"{label}{extension}"
 
                   if target.exists():
-                      raise SystemExit(f"Output package already exists: {target.name}")
+                      raise SystemExit(
+                          f"Output package already exists: {target.name}"
+                      )
 
                   shutil.copy2(source, target)
                   validate_package(target)
 
-                  print(f"Added direct package: {target.name} ({target.stat().st_size:,} bytes)")
+                  print(
+                      f"Added direct package: {target.name} "
+                      f"({target.stat().st_size:,} bytes)"
+                  )
 
           process_download("game")
           process_download("update")
@@ -256,7 +306,8 @@ jobs:
 
           packages = sorted(
               p for p in game_dir.iterdir()
-              if p.is_file() and p.suffix.lower() in package_extensions
+              if p.is_file()
+              and p.suffix.lower() in package_extensions
           )
 
           if not packages:
@@ -294,7 +345,9 @@ jobs:
                       if len(header) != 16 or header[:4] != b"PFS0":
                           return []
 
-                      count, string_size = struct.unpack_from("<II", header, 4)
+                      count, string_size = struct.unpack_from(
+                          "<II", header, 4
+                      )
 
                       if count > 100000 or string_size > 100000000:
                           return []
@@ -308,7 +361,9 @@ jobs:
                       names = []
 
                       for i in range(count):
-                          offset = struct.unpack_from("<I", entries, i * 0x18 + 0x10)[0]
+                          offset = struct.unpack_from(
+                              "<I", entries, i * 0x18 + 0x10
+                          )[0]
 
                           if offset >= len(strings):
                               continue
@@ -318,7 +373,11 @@ jobs:
                           if end < 0:
                               continue
 
-                          names.append(strings[offset:end].decode(errors="replace"))
+                          names.append(
+                              strings[offset:end].decode(
+                                  errors="replace"
+                              )
+                          )
 
                       return names
 
@@ -332,7 +391,10 @@ jobs:
                   continue
 
               for name in pfs0_names(path):
-                  match = re.fullmatch(r"([0-9A-Fa-f]{16})[0-9A-Fa-f]{16}\.tik", name)
+                  match = re.fullmatch(
+                      r"([0-9A-Fa-f]{16})[0-9A-Fa-f]{16}\.tik",
+                      name,
+                  )
 
                   if match:
                       title_id = int(match.group(1), 16)
@@ -340,7 +402,10 @@ jobs:
                       if (title_id & 0xFFF) == 0:
                           candidates.add(f"{title_id:016X}")
 
-              match = re.search(r"\[([0-9A-Fa-f]{16})\]", path.name)
+              match = re.search(
+                  r"\[([0-9A-Fa-f]{16})\]",
+                  path.name,
+              )
 
               if match:
                   title_id = int(match.group(1), 16)
@@ -351,7 +416,8 @@ jobs:
           if len(candidates) != 1:
               raise SystemExit(
                   "Could not uniquely identify the base game's title ID. "
-                  f"Candidates found: {sorted(candidates)}."
+                  f"Candidates found: {sorted(candidates)}. "
+                  "Check the base NSP and its ticket/filename."
               )
 
           print(next(iter(candidates)))
@@ -377,7 +443,9 @@ jobs:
           set -euo pipefail
           echo "Preparing shader toolchain for profile $DM_GAME"
 
-          CHAIN_SCRIPT="$(find . -name dmsh_chain.py -type f -print -quit)"
+          CHAIN_SCRIPT="$(
+            find . -name dmsh_chain.py -type f -print -quit
+          )"
 
           if [[ -z "$CHAIN_SCRIPT" ]]; then
             echo "::error::Could not find dmsh_chain.py"
@@ -387,8 +455,7 @@ jobs:
           python "$CHAIN_SCRIPT" --update-lock
           python "$CHAIN_SCRIPT" --header
 
-      # LOW GRAPHICS SETTINGS
-      - name: Set low-graphics runtime defaults
+      - name: Set BOTW runtime defaults
         shell: bash
         run: |
           set -euo pipefail
@@ -398,7 +465,7 @@ jobs:
           cat > "$WORK/env.txt" <<'EOF'
           DM_OPMODE=0
           DM_RENDER_SCALE=0.5
-          DM_FPS_TARGET=30
+          DM_FPS_TARGET=60
           DM_SHOW_FPS=1
           EOF
 
